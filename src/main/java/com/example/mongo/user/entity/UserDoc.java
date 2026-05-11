@@ -14,4 +14,6 @@ public class UserDoc {
     private ObjectId id;
     private String firstName;
     private String lastName;
+    private String email;
+    private String password;
 }

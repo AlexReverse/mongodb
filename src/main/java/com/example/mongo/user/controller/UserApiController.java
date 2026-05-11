@@ -1,27 +1,39 @@
 package com.example.mongo.user.controller;
 
-import com.example.mongo.user.dto.request.CreateUserRequest;
+import com.example.mongo.user.dto.request.RegistrationRequest;
 import com.example.mongo.user.dto.request.EditUserRequest;
 import com.example.mongo.user.dto.response.UserResponse;
 import com.example.mongo.user.entity.UserDoc;
+import com.example.mongo.user.exception.BadRequestException;
 import com.example.mongo.user.exception.ObjectIdParseException;
+import com.example.mongo.user.exception.UserAlreadyExistException;
 import com.example.mongo.user.exception.UserNotFoundException;
 import com.example.mongo.user.repository.UserRepository;
 import com.example.mongo.user.routes.UserRoutes;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import org.bson.types.ObjectId;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class UserApiController {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    @Value("${init.email}")
+    private String initUser;
+    @Value("${init.password}")
+    private String iniPassword;
 
     @GetMapping(UserRoutes.BY_ID)
     public UserResponse findById(@PathVariable String id) throws UserNotFoundException, ObjectIdParseException {
@@ -49,23 +61,28 @@ public class UserApiController {
     }
 
 
-    @PostMapping(UserRoutes.CREATE)
-    public UserResponse create(@RequestBody CreateUserRequest request) {
+    @PostMapping(UserRoutes.REGISTRATION)
+    public UserResponse registration(@RequestBody RegistrationRequest request) throws BadRequestException, UserAlreadyExistException {
+        request.validation();
+
+        Optional<UserDoc> check = userRepository.findByEmail(request.getEmail());
+        if (check.isPresent()) throw new UserAlreadyExistException();
+
         UserDoc userDoc = UserDoc.builder()
                 .lastName(request.getLastName())
                 .firstName(request.getFirstName())
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
                 .build();
 
         userDoc = userRepository.save(userDoc);
         return UserResponse.of(userDoc);
     }
 
-    @PutMapping(UserRoutes.BY_ID)
-    public UserResponse edit(@PathVariable String id, @RequestBody EditUserRequest request) throws ObjectIdParseException, UserNotFoundException {
-        if (!ObjectId.isValid(id)) throw new ObjectIdParseException();
-
+    @PutMapping(UserRoutes.EDIT)
+    public UserResponse edit(Principal principal, @RequestBody EditUserRequest request) throws ObjectIdParseException, UserNotFoundException {
         UserDoc userDoc = userRepository
-                .findById(new ObjectId(id))
+                .findByEmail(principal.getName())
                 .orElseThrow(UserNotFoundException::new);
         userDoc.setFirstName(request.getFirstName());
         userDoc.setLastName(request.getLastName());
@@ -81,5 +98,24 @@ public class UserApiController {
 
         userRepository.deleteById(new ObjectId(id));
         return HttpStatus.OK.name();
+    }
+
+    @GetMapping(UserRoutes.INIT)
+    public UserResponse init() {
+        Optional<UserDoc> checkUser = userRepository.findByEmail(initUser);
+        UserDoc userDoc;
+
+        if (checkUser.isEmpty()) {
+            userDoc = UserDoc.builder()
+                    .firstName("Default")
+                    .lastName("Default")
+                    .email(initUser)
+                    .password(passwordEncoder.encode(iniPassword))
+                    .build();
+            userDoc = userRepository.save(userDoc);
+        } else {
+            userDoc = checkUser.get();
+        }
+        return UserResponse.of(userDoc);
     }
 }

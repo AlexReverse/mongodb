@@ -6,10 +6,13 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface UserRepository extends MongoRepository<UserDoc, ObjectId> {
     public List<UserDoc> findByFirstName(String firstName);
 
     public List<UserDoc> findByLastName(String lastName);
+
+    Optional<UserDoc> findByEmail(String email);
 }
